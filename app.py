@@ -21,7 +21,7 @@ chat_model = aiplatform.ChatModel.from_pretrained("chat-bison@001")
 # Prompt optimizado con conocimiento del esquema
 def nl_to_sql(question: str) -> str:
     prompt = f"""
-Eres un experto en análisis de datos. Tu tarea es traducir preguntas en lenguaje natural
+Eres un experto en análisis de datos. Tu tarea es como traducir preguntas en lenguaje natural
 a consultas SQL sobre la siguiente tabla de BigQuery:
 
 Tabla: `{TABLE_FULL}`
