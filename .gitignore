@@ -53,3 +53,7 @@ secrets/**
 assets/private/
 assets/**/*.key
 assets/**/*.pem
+
+# Secrets (local)
+.streamlit/secrets.toml
+lqairmh-agbg-iberia-song-ccai-04a4f3e29810.json
