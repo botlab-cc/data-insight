@@ -1,0 +1,55 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+pip-wheel-metadata/
+.pyre/
+.dmypy.json
+
+# === Entornos / IDE ===
+.venv/
+venv/
+.env
+.env.*
+.python-version
+.idea/
+.vscode/
+.DS_Store
+
+# === Notebooks / tmp ===
+.ipynb_checkpoints/
+.tmp/
+logs/
+*.log
+
+# === Streamlit ===
+.streamlit/secrets.toml
+.streamlit/*.yaml
+
+# === Claves/credenciales (ajusta nombres a tus ficheros) ===
+# NO ignores *.json global (podrías tener JSON legítimos del proyecto).
+# Mejor patrones específicos de credenciales:
+*service_account*.json
+*credentials*.json
+*apikey*.json
+*api_key*.json
+*keyfile*.json
+*_secret*.json
+secrets/
+secrets/**
+
+# === Assets pesados/privados opcionales ===
+assets/private/
+assets/**/*.key
+assets/**/*.pem

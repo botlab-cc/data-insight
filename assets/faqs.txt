@@ -1,0 +1,6 @@
+¿Cuál fue el total de llamadas en el último mes?
+% de llamadas con frustración en Energía
+Porcentaje de llamadas con FCR SI en Banca
+Listado de motivos principales y secundarios con tasa de abandono NO
+Número de llamadas transferidas por producto Telco
+Resumen de llamadas con churn Tal vez para Seguros

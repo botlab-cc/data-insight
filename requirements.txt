@@ -1,4 +1,6 @@
 streamlit
+pandas
 google-cloud-bigquery
 google-cloud-aiplatform
-pandas 
+google-auth
+db-dtypes

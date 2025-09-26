@@ -1,85 +1,113 @@
 import streamlit as st
-import os
-import json
-import pandas as pd
-from google.oauth2 import service_account
-from google.cloud import bigquery, aiplatform
+from src.llm import generate_sql, generate_recommendation
+from src.data import run_query
+from src.config import PROJECT_ID, BQ_TABLE, BQ_DATASET, BQ_PROJECT
+from src.utils import dataframe_to_text
+import base64
 
-# Configuración del entorno GCP
-PROJECT_ID = "lqairmh-agbg-iberia-song-ccai"
-LOCATION = "us-central1"
-TABLE_FULL = "lqairmh-agbg-iberia-song-ccai.ccaiglobalv01.ccai-global-transcripts-results-v01"
+st.set_page_config(
+    page_title="Quality Assistant",
+    layout="wide",
+    page_icon="assets/logo.png"
+)
 
-# Autenticación
-credentials_info = json.loads(st.secrets["gcp_service_account"])
-credentials = service_account.Credentials.from_service_account_info(credentials_info)
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-client_bq = bigquery.Client(credentials=credentials, project=PROJECT_ID)
-aiplatform.init(project=PROJECT_ID, location=LOCATION, credentials=credentials)
-chat_model = aiplatform.ChatModel.from_pretrained("chat-bison@001")
+debug = st.sidebar.checkbox("Debug", value=False)
 
-# Prompt optimizado con conocimiento del esquema
-def nl_to_sql(question: str) -> str:
-    prompt = f"""
-Eres un experto en análisis de datos. Tu tarea es como traducir preguntas en lenguaje natural
-a consultas SQL sobre la siguiente tabla de BigQuery:
+def img_to_base64(path):
+    with open(path, "rb") as img_file:
+        b64 = base64.b64encode(img_file.read()).decode()
+    return b64
 
-Tabla: `{TABLE_FULL}`
+b64_logo = img_to_base64("assets/logo.png")
 
-Campos disponibles:
-- motivo_llamada_principal, motivo_llamada_secundario, motivo_llamada_terciario
-- frustracion_cliente, recomendacion_agente_l1, recomendacion_agente_l2
-- solucion_recomendacion, posibilidad_baja_producto, producto
-- fcr, nps, csat, tasa_transferencia, tasa_abandono, churn
-- customer_engagement, resumen_llamada, fecha_llamada, cliente, geografia, tramo_edad, antiguedad, tipo_agente
+st.markdown(
+    f"""
+    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1rem;">
+        <img src="data:image/png;base64,{b64_logo}" alt="Logo" style="height: 50px;">
+        <h1 style="color:#7300A0; margin: 0;">Quality Assistant</h1>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-Reglas:
-- Siempre usa la tabla `{TABLE_FULL}`
-- La salida debe ser solo una consulta SQL válida de BigQuery, sin explicaciones ni comentarios
-- Usa funciones como COUNT, AVG, GROUP BY, ORDER BY según la pregunta
-- Si se pide filtrar por fechas, usa la columna `fecha_llamada`
+st.markdown("¿Qué necesitas saber? (ej. % de llamadas con frustración en Energía)")
 
-Pregunta: {question}
-SQL:
-"""
-    response = chat_model.predict(prompt=prompt, temperature=0)
-    return response.text.strip()
+with st.form(key="query_form", clear_on_submit=False):
+    user_input = st.text_input(
+        "",
+        value="¿Cuál fue el total de llamadas en el último mes?",
+        placeholder="Escribe tu pregunta aquí...",
+        key="user_input_key",
+    )
+    submit_button = st.form_submit_button("Enviar Consulta")
 
-def run_query(sql: str) -> pd.DataFrame:
-    query_job = client_bq.query(sql)
-    return query_job.result().to_dataframe()
+if submit_button and user_input.strip():
+    try:
+        with open("prompts/prompt_sql.txt", "r", encoding="utf-8") as f:
+            prompt_template = f.read()
+    except FileNotFoundError:
+        st.error("Archivo prompts/prompt_sql.txt no encontrado.")
+        st.stop()
 
-# Interfaz tipo chat
-st.title("💬 Chat con datos de Contact Center")
+    prompt_sql = prompt_template.format(
+        project_id=f"{BQ_PROJECT}.{BQ_DATASET}.{BQ_TABLE}",
+        user_input=user_input.strip()
+    )
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    with st.spinner("Generando consulta SQL con Gemini..."):
+        sql_query = generate_sql(prompt_sql)
 
-for msg in st.session_state.messages:
-    st.chat_message(msg["role"]).markdown(msg["content"])
+    if debug:
+        st.subheader("SQL generado")
+        st.code(sql_query, language="sql")
 
-user_prompt = st.chat_input("Haz una pregunta sobre tus datos...")
+    if len(sql_query) < 10:
+        st.error("Consulta SQL vacía o demasiado corta. No se ejecutará.")
+    else:
+        try:
+            df = run_query(sql_query)
+            if df.empty:
+                st.warning("La consulta no devolvió resultados.")
+            else:
+                st.dataframe(df)
 
-if user_prompt:
-    st.session_state.messages.append({"role": "user", "content": user_prompt})
-    st.chat_message("user").markdown(user_prompt)
+                df_text = dataframe_to_text(df)
 
-    with st.chat_message("assistant"):
-        with st.spinner("Consultando..."):
-            try:
-                sql = nl_to_sql(user_prompt)
-                st.code(sql, language="sql")
+                with st.spinner("Generando recomendación de mejora..."):
+                    recommendation = generate_recommendation(user_input, df_text)
 
-                df = run_query(sql)
-                if df.empty:
-                    result_text = "✅ Consulta ejecutada, pero no hay resultados."
-                else:
-                    result_text = f"🟢 Resultado:\n\n{df.to_markdown(index=False)}"
+                st.markdown("### Recomendación de Mejora")
+                st.markdown(
+                    f"""
+                    <div class="recommendation-box">{recommendation}</div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
-                st.session_state.messages.append({"role": "assistant", "content": result_text})
-                st.markdown(result_text)
-            except Exception as e:
-                error_msg = f"❌ Error: {e}"
-                st.session_state.messages.append({"role": "assistant", "content": error_msg})
-                st.error(error_msg)
+            st.session_state.history.append({"pregunta": user_input, "sql": sql_query})
+        except Exception as e:
+            st.error(f"Error al ejecutar la consulta: {e}")
 
+with st.sidebar:
+    with st.expander("Preguntas Frecuentes", expanded=True):
+        try:
+            with open("assets/faqs.txt", "r", encoding="utf-8") as f:
+                faqs = [line.strip() for line in f if line.strip()]
+            for faq in faqs:
+                st.markdown(f"- {faq}")
+        except FileNotFoundError:
+            st.warning("Archivo assets/faqs.txt no encontrado.")
+
+    with st.expander("Historial de consultas", expanded=True):
+        if st.session_state.history:
+            for i, item in enumerate(reversed(st.session_state.history[-20:])):
+                st.markdown(f"**Pregunta:** {item['pregunta']}")
+                if debug:
+                    st.code(item["sql"], language="sql")
+                if i < len(st.session_state.history[-20:]) - 1:
+                    st.markdown("---")
+        else:
+            st.write("No hay consultas en el historial.")
